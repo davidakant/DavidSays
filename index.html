@@ -152,6 +152,19 @@
       overflow: hidden;           /* clips buttons to circle shape */
     }
 
+    /* Overlay ring — sits on top of the buttons and masks their outer edges
+       where they approach the circle boundary. pointer-events:none so taps
+       pass straight through to the buttons underneath. */
+    #board::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: 50%;
+      border: calc(var(--gap) + 4px) solid var(--bg);
+      pointer-events: none;
+      z-index: 9;                 /* above buttons, below center-badge (z-10) */
+    }
+
     /* ─── Simon Buttons ─────────────────────────────────────── */
     .btn {
       border: none;
