@@ -12,7 +12,7 @@
                  user-scalable=no, viewport-fit=cover" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <title>Simon Says</title>
+  <title>David Says</title>
 
   <style>
     /* ─── Reset & Base ─────────────────────────────────────── */
@@ -165,7 +165,7 @@
       z-index: 9;                 /* above buttons, below center-badge (z-10) */
     }
 
-    /* ─── Simon Buttons ─────────────────────────────────────── */
+    /* ─── David Buttons ─────────────────────────────────────── */
     .btn {
       border: none;
       cursor: pointer;
@@ -345,7 +345,7 @@
 
     </div><!-- /#sidebar -->
 
-    <!-- Simon board -->
+    <!-- David Says board -->
     <div id="board" class="locked">
       <button class="btn btn-green"  data-color="green"  aria-label="Green"></button>
       <button class="btn btn-red"    data-color="red"    aria-label="Red"></button>
@@ -353,7 +353,7 @@
       <button class="btn btn-blue"   data-color="blue"   aria-label="Blue"></button>
 
       <!-- Centre logo -->
-      <div id="center-badge">Simon</div>
+      <div id="center-badge">David</div>
     </div>
 
   </div><!-- /#app -->
@@ -436,7 +436,7 @@
 
     // Persist high score in localStorage if available
     try {
-      const stored = parseInt(localStorage.getItem('simon-hi'), 10);
+      const stored = parseInt(localStorage.getItem('david-hi'), 10);
       if (!isNaN(stored)) { highScore = stored; hiScoreEl.textContent = highScore; }
     } catch (_) {}
 
@@ -555,7 +555,7 @@
       if (score > highScore) {
         highScore = score;
         hiScoreEl.textContent = highScore;
-        try { localStorage.setItem('simon-hi', highScore); } catch (_) {}
+        try { localStorage.setItem('david-hi', highScore); } catch (_) {}
       }
 
       setStatus(`Round ${score} — Brilliant!`, 'good');
