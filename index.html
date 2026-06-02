@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <!--
+    Prevent all pinch-zoom and double-tap-to-zoom.
+    maximum-scale=1.0 + user-scalable=no is the key combo for iOS Safari.
+  -->
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1.0,
+                 maximum-scale=1.0, minimum-scale=1.0,
+                 user-scalable=no, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>Simon Says</title>
+
+  <style>
+    /* ─── Reset & Base ─────────────────────────────────────── */
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    :root {
+      /* Layout tokens */
+      --board-size: min(72vw, 72vh);   /* iPad default */
+      --gap: clamp(10px, 2vw, 20px);
+      --radius-btn: 24px;
+      --radius-board: 50%;
+
+      /* Color tokens — dim state */
+      --green-dim:  #1a5c2a;
+      --red-dim:    #5c1a1a;
+      --yellow-dim: #5c4d0a;
+      --blue-dim:   #0a2d5c;
+
+      /* Color tokens — lit state */
+      --green-lit:  #3ddc6e;
+      --red-lit:    #ff4444;
+      --yellow-lit: #ffd700;
+      --blue-lit:   #4499ff;
+
+      /* UI */
+      --bg:         #111318;
+      --surface:    #1c1f27;
+      --text:       #e8eaf0;
+      --text-muted: #6b7280;
+      --accent:     #3ddc6e;
+      --error:      #ff4444;
+      --font: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    }
+
+    /* ── iPhone override: tighten everything up ── */
+    @media (max-width: 430px) {
+      :root {
+        --board-size: min(88vw, 52vh);
+        --gap: 8px;
+        --radius-btn: 16px;
+      }
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;           /* no scroll bounce */
+      background: var(--bg);
+      font-family: var(--font);
+      color: var(--text);
+
+      /* Prevent text selection & native highlights during rapid taps */
+      -webkit-user-select: none;
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+      touch-action: manipulation;  /* kills 300 ms delay + double-tap zoom */
+    }
+
+    /* ─── Full-screen flex shell ───────────────────────────── */
+    #app {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      height: 100%;
+      gap: clamp(16px, 3vh, 32px);
+      padding: env(safe-area-inset-top, 16px)
+               env(safe-area-inset-right, 16px)
+               env(safe-area-inset-bottom, 16px)
+               env(safe-area-inset-left, 16px);
+    }
+
+    /* ─── Score panel ───────────────────────────────────────── */
+    #score-panel {
+      display: flex;
+      gap: clamp(24px, 6vw, 64px);
+      align-items: center;
+    }
+
+    .score-block {
+      text-align: center;
+    }
+
+    .score-label {
+      font-size: clamp(11px, 1.6vw, 14px);
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+    }
+
+    .score-value {
+      font-size: clamp(32px, 6vw, 56px);
+      font-weight: 700;
+      line-height: 1.1;
+      color: var(--text);
+      transition: color 0.2s;
+    }
+
+    /* ─── Status line ───────────────────────────────────────── */
+    #status {
+      font-size: clamp(14px, 2.2vw, 20px);
+      font-weight: 500;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+      min-height: 1.6em;
+      text-align: center;
+      transition: color 0.2s;
+    }
+
+    #status.error { color: var(--error); }
+    #status.good  { color: var(--accent); }
+
+    /* ─── Game Board ────────────────────────────────────────── */
+    #board {
+      position: relative;
+      width: var(--board-size);
+      height: var(--board-size);
+      border-radius: var(--radius-board);
+
+      /* Dark ring behind the buttons */
+      background: #0a0c10;
+      box-shadow:
+        0 0 0 6px #1c1f27,
+        0 0 0 10px #0a0c10,
+        0 0 60px rgba(0,0,0,0.6);
+
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      grid-template-rows: 1fr 1fr;
+      gap: var(--gap);
+      padding: var(--gap);
+      overflow: hidden;           /* clips buttons to circle shape */
+    }
+
+    /* ─── Simon Buttons ─────────────────────────────────────── */
+    .btn {
+      border: none;
+      cursor: pointer;
+      outline: none;
+      transition:
+        background-color 80ms ease,
+        box-shadow       80ms ease,
+        transform        80ms ease;
+      -webkit-appearance: none;
+      touch-action: manipulation;
+    }
+
+    /* Corner radii that follow the board's circular clip */
+    .btn-green  { border-radius: var(--radius-btn) 0 0 0; }
+    .btn-red    { border-radius: 0 var(--radius-btn) 0 0; }
+    .btn-yellow { border-radius: 0 0 0 var(--radius-btn); }
+    .btn-blue   { border-radius: 0 0 var(--radius-btn) 0; }
+
+    /* Dim (default) colours */
+    .btn-green  { background: var(--green-dim); }
+    .btn-red    { background: var(--red-dim); }
+    .btn-yellow { background: var(--yellow-dim); }
+    .btn-blue   { background: var(--blue-dim); }
+
+    /* Lit state — added via JS */
+    .btn-green.lit  {
+      background: var(--green-lit);
+      box-shadow: 0 0 40px 8px rgba(61,220,110,0.7);
+    }
+    .btn-red.lit    {
+      background: var(--red-lit);
+      box-shadow: 0 0 40px 8px rgba(255,68,68,0.7);
+    }
+    .btn-yellow.lit {
+      background: var(--yellow-lit);
+      box-shadow: 0 0 40px 8px rgba(255,215,0,0.7);
+    }
+    .btn-blue.lit   {
+      background: var(--blue-lit);
+      box-shadow: 0 0 40px 8px rgba(68,153,255,0.7);
+    }
+
+    /* Disabled look during playback */
+    #board.locked .btn {
+      cursor: default;
+      filter: brightness(0.85);
+    }
+
+    /* Game-over flash — applied to entire board */
+    @keyframes gameover-flash {
+      0%, 100% { opacity: 1; }
+      25%       { opacity: 0.15; }
+      75%       { opacity: 0.15; }
+    }
+    #board.gameover {
+      animation: gameover-flash 0.6s ease 2;
+    }
+
+    /* ─── Center badge (logo / level indicator) ─────────────── */
+    #center-badge {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: clamp(48px, 10vw, 88px);
+      height: clamp(48px, 10vw, 88px);
+      border-radius: 50%;
+      background: var(--bg);
+      border: 3px solid #2a2e38;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: clamp(10px, 1.8vw, 15px);
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      pointer-events: none;
+      z-index: 10;
+      transition: color 0.3s;
+    }
+
+    /* ─── Start / Restart Button ─────────────────────────────── */
+    #start-btn {
+      padding: clamp(12px, 2vh, 18px) clamp(32px, 6vw, 64px);
+      font-size: clamp(15px, 2.4vw, 20px);
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #000;
+      background: var(--accent);
+      border: none;
+      border-radius: 100px;
+      cursor: pointer;
+      outline: none;
+      touch-action: manipulation;
+      transition:
+        background 0.15s,
+        transform  0.1s,
+        box-shadow 0.15s;
+      box-shadow: 0 4px 24px rgba(61,220,110,0.35);
+      -webkit-appearance: none;
+    }
+
+    #start-btn:active {
+      transform: scale(0.96);
+      box-shadow: 0 2px 12px rgba(61,220,110,0.25);
+    }
+
+    #start-btn:disabled {
+      opacity: 0.4;
+      cursor: default;
+      transform: none;
+    }
+
+    /* ─── Landscape iPad tweak ───────────────────────────────── */
+    @media (orientation: landscape) and (min-width: 768px) {
+      :root {
+        --board-size: min(62vw, 82vh);
+      }
+
+      #app {
+        flex-direction: row;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: clamp(24px, 4vw, 56px);
+      }
+
+      /* Stack score + status + button to the side */
+      #sidebar {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: clamp(16px, 2.5vh, 28px);
+      }
+    }
+
+    /* Sidebar is a plain div in portrait — no effect */
+    #sidebar {
+      display: contents; /* transparent in portrait */
+    }
+    @media (orientation: landscape) and (min-width: 768px) {
+      #sidebar { display: flex; }
+    }
+
+    /* ─── Accessibility: respect reduced motion ──────────────── */
+    @media (prefers-reduced-motion: reduce) {
+      .btn, #start-btn { transition: none; }
+      #board.gameover  { animation: none; }
+    }
+  </style>
+</head>
+
+<body>
+  <div id="app">
+
+    <!-- Landscape sidebar wrapper (transparent in portrait via display:contents) -->
+    <div id="sidebar">
+
+      <!-- Score display -->
+      <div id="score-panel">
+        <div class="score-block">
+          <div class="score-label">Score</div>
+          <div class="score-value" id="score">0</div>
+        </div>
+        <div class="score-block">
+          <div class="score-label">Best</div>
+          <div class="score-value" id="high-score">0</div>
+        </div>
+      </div>
+
+      <!-- Status / feedback line -->
+      <div id="status">Tap Start to play</div>
+
+      <!-- Start / Restart button -->
+      <button id="start-btn">Start Game</button>
+
+    </div><!-- /#sidebar -->
+
+    <!-- Simon board -->
+    <div id="board" class="locked">
+      <button class="btn btn-green"  data-color="green"  aria-label="Green"></button>
+      <button class="btn btn-red"    data-color="red"    aria-label="Red"></button>
+      <button class="btn btn-yellow" data-color="yellow" aria-label="Yellow"></button>
+      <button class="btn btn-blue"   data-color="blue"   aria-label="Blue"></button>
+
+      <!-- Centre logo -->
+      <div id="center-badge">Simon</div>
+    </div>
+
+  </div><!-- /#app -->
+
+  <script>
+  (() => {
+    'use strict';
+
+    // ─── DOM refs ────────────────────────────────────────────
+    const board      = document.getElementById('board');
+    const startBtn   = document.getElementById('start-btn');
+    const scoreEl    = document.getElementById('score');
+    const hiScoreEl  = document.getElementById('high-score');
+    const statusEl   = document.getElementById('status');
+    const badge      = document.getElementById('center-badge');
+    const colorBtns  = [...document.querySelectorAll('.btn')];
+
+    // ─── Web Audio Context (created on first start tap) ──────
+    // Safari REQUIRES AudioContext creation inside a user-gesture handler.
+    let audioCtx = null;
+
+    function ensureAudio() {
+      if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      // Resume if suspended (iOS puts it in suspended state until a gesture)
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+    }
+
+    // Frequencies (Hz) for each color, plus an error tone
+    const TONES = {
+      green:  329.63, // E4
+      red:    261.63, // C4
+      yellow: 392.00, // G4
+      blue:   220.00, // A3
+      error:  110.00, // A2 — harsh low buzz for wrong input
+    };
+
+    /**
+     * Play a synthesized tone for `durationMs` milliseconds.
+     * Uses a triangle wave for a softer, toy-like timbre.
+     */
+    function playTone(color, durationMs = 300) {
+      if (!audioCtx) return;
+      const freq = TONES[color] || TONES.error;
+      const now  = audioCtx.currentTime;
+
+      const osc  = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+
+      osc.type      = (color === 'error') ? 'sawtooth' : 'triangle';
+      osc.frequency.setValueAtTime(freq, now);
+
+      // Envelope: quick attack, sustain, soft release
+      gain.gain.setValueAtTime(0, now);
+      gain.gain.linearRampToValueAtTime(0.5, now + 0.02);
+      gain.gain.setValueAtTime(0.5, now + durationMs / 1000 - 0.05);
+      gain.gain.linearRampToValueAtTime(0, now + durationMs / 1000);
+
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+
+      osc.start(now);
+      osc.stop(now + durationMs / 1000 + 0.05);
+    }
+
+    // ─── Game state ───────────────────────────────────────────
+    const COLORS   = ['green', 'red', 'yellow', 'blue'];
+    const LIT_MS   = 300;  // button flash duration during playback
+    const GAP_MS   = 150;  // gap between flashes during playback
+    const INPUT_LIT_MS = 160; // briefer flash on user tap
+
+    let sequence    = [];   // the master sequence
+    let userIndex   = 0;    // where the user is in the current round
+    let score       = 0;
+    let highScore   = 0;
+    let accepting   = false;// true when it's the user's turn
+
+    // Persist high score in localStorage if available
+    try {
+      const stored = parseInt(localStorage.getItem('simon-hi'), 10);
+      if (!isNaN(stored)) { highScore = stored; hiScoreEl.textContent = highScore; }
+    } catch (_) {}
+
+    // ─── Helpers ──────────────────────────────────────────────
+
+    function setStatus(msg, cls = '') {
+      statusEl.textContent = msg;
+      statusEl.className   = cls;
+    }
+
+    function setBadge(text) {
+      badge.textContent = text;
+    }
+
+    /** Light up a button for `duration` ms, play its tone. Returns a Promise. */
+    function flashButton(color, duration = LIT_MS) {
+      return new Promise(resolve => {
+        const el = board.querySelector(`.btn-${color}`);
+        el.classList.add('lit');
+        playTone(color, duration);
+        setTimeout(() => {
+          el.classList.remove('lit');
+          resolve();
+        }, duration);
+      });
+    }
+
+    /** Promise-based delay */
+    const delay = ms => new Promise(r => setTimeout(r, ms));
+
+    // ─── Playback phase ───────────────────────────────────────
+
+    async function playSequence() {
+      board.classList.add('locked');
+      accepting = false;
+      setStatus('Watch carefully…');
+      setBadge('·');
+
+      // Brief pause before showing the sequence
+      await delay(600);
+
+      for (const color of sequence) {
+        await flashButton(color, LIT_MS);
+        await delay(GAP_MS);
+      }
+
+      // Hand control to player
+      accepting = true;
+      userIndex = 0;
+      board.classList.remove('locked');
+      setStatus('Your turn!', 'good');
+      setBadge(`${score}`);
+    }
+
+    // ─── New round ────────────────────────────────────────────
+
+    async function nextRound() {
+      const next = COLORS[Math.floor(Math.random() * COLORS.length)];
+      sequence.push(next);
+      score = sequence.length - 1; // score = rounds completed (0-indexed start)
+      scoreEl.textContent  = score;
+      await playSequence();
+    }
+
+    // ─── Start / Restart ──────────────────────────────────────
+
+    async function startGame() {
+      // CRITICAL: Must initialise AudioContext inside this touch/click handler.
+      ensureAudio();
+
+      // Reset state
+      sequence  = [];
+      score     = 0;
+      userIndex = 0;
+      accepting = false;
+
+      scoreEl.textContent = '0';
+      board.classList.remove('gameover');
+      startBtn.disabled = true;
+      setStatus('Get ready…');
+      setBadge('');
+
+      await delay(400);
+      await nextRound();
+    }
+
+    // ─── Player input ─────────────────────────────────────────
+
+    async function handleColorTap(color) {
+      if (!accepting) return;
+
+      // Briefly lock to prevent double-taps mid-evaluation
+      accepting = false;
+
+      // Flash & sound feedback for the tap
+      await flashButton(color, INPUT_LIT_MS);
+
+      if (color !== sequence[userIndex]) {
+        // ── Wrong! ──
+        await handleGameOver();
+        return;
+      }
+
+      userIndex++;
+
+      if (userIndex < sequence.length) {
+        // More to go in this round
+        accepting = true;
+        return;
+      }
+
+      // ── Round complete ──
+      score = sequence.length;
+      scoreEl.textContent = score;
+
+      if (score > highScore) {
+        highScore = score;
+        hiScoreEl.textContent = highScore;
+        try { localStorage.setItem('simon-hi', highScore); } catch (_) {}
+      }
+
+      setStatus(`Round ${score} — Brilliant!`, 'good');
+      setBadge('✓');
+      board.classList.add('locked');
+
+      await delay(900);
+      await nextRound();
+    }
+
+    // ─── Game over ────────────────────────────────────────────
+
+    async function handleGameOver() {
+      accepting = false;
+      board.classList.add('locked', 'gameover');
+
+      // Flash all buttons red-style + error tone
+      playTone('error', 600);
+
+      // Light up all 4 buttons simultaneously to signal failure
+      colorBtns.forEach(b => b.classList.add('lit'));
+      await delay(500);
+      colorBtns.forEach(b => b.classList.remove('lit'));
+      await delay(200);
+
+      board.classList.remove('gameover');
+
+      setStatus(`Game over — score: ${score}`, 'error');
+      setBadge('✕');
+      startBtn.disabled = false;
+      startBtn.textContent = 'Play Again';
+    }
+
+    // ─── Event listeners ──────────────────────────────────────
+
+    startBtn.addEventListener('click', startGame);
+    startBtn.addEventListener('touchend', e => {
+      e.preventDefault(); // prevent ghost mouse event
+      startGame();
+    }, { passive: false });
+
+    colorBtns.forEach(btn => {
+      const color = btn.dataset.color;
+
+      btn.addEventListener('click', () => handleColorTap(color));
+
+      // Use touchend for instant, low-latency response on iOS
+      btn.addEventListener('touchend', e => {
+        e.preventDefault();
+        handleColorTap(color);
+      }, { passive: false });
+    });
+
+    // Prevent context-menu / callout on long-press anywhere on the board
+    board.addEventListener('contextmenu', e => e.preventDefault());
+
+  })();
+  </script>
+</body>
+</html>
